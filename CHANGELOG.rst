@@ -4,6 +4,71 @@ Cisco Iosxr Collection Release Notes
 
 .. contents:: Topics
 
+v12.4.0
+=======
+
+Minor Changes
+-------------
+
+- Fixed for iosxr_lldp_interfaces, iosxr_lldp_global, iosxr_lag_interfaces, iosxr_lacp_interfaces, iosxr_lacp, iosxr_l3_interfaces, iosxr_l2_interfaces, iosxr_interfaces, iosxr_acls, iosxr_static_routes, iosxr_ping,iosxr_banner, iosxr_config, iosxr_system, iosxr_command, iosxr_user, iosxr_netconf
+- For iosxr_vrf_interfaces, iosxr_vrf_global, iosxr_vrf_address_family, iosxr_snmp_server, iosxr_route_maps, iosxr_prefix_lists, iosxr_ospfv3, iosxr_ospfv2, iosxr_ospf_interfaces, iosxr_ntp_global, iosxr_logging_global, iosxr_hostname, iosxr_bgp_templates, iosxr_bgp_neighbor_address_family, iosxr_bgp_global, iosxr_bgp_address_family, iosxr_acl_interfaces modules ,fix will be done via netcommon ResourceModule.result change (Upstream to iosxr)
+- No changes for fail_json since it uses msg format already , except for ping module where currently warning is not being set.
+- Remediate deprecated 'to_bytes' from 'ansible.module_utils._text' and replaced with ansible.module_utils.common.text.converters.
+- Remediate deprecated 'to_text' from 'ansible.module_utils._text' and replaced with ansible.module_utils.common.text.converters.
+- Remediate deprecated ``warnings`` parameter in ``exit_json`` calls by using ``AnsibleModule.warn()`` across all iosxr modules to address deprecation warning from ansible-core 2.23.
+- Remediate deprecated `ansible.module_utils.common._collections_compat` module and replaced with `collections.abc` from the Python standard library.
+
+Bugfixes
+--------
+
+- bgp_global - Fixed neighbor shutdown state parsing to correctly handle 'no shutdown' command, ensuring proper idempotency when toggling neighbor shutdown state.
+- bgp_global - Removed stale `_build_key` function present in `_bgp_list_to_dict` within the config py file.
+
+v12.3.2
+=======
+
+Bugfixes
+--------
+
+- iosxr_ospfv2 - Enhanced max-metric router-lsa support with comprehensive configuration options (external-lsa, summary-lsa, on-startup with wait_for_bgp/wait_period, include-stub), added mutual exclusivity validation for conflicting parameters, corrected on_startup.wait_for_bgp parameter type from integer to boolean, and fixed idempotency across all states.
+
+v12.3.1
+=======
+
+Release Summary
+---------------
+
+This bugfix release fixes action plugin naming and sanity issues that were blocking Automation Hub certification. All 32 resource module action plugins are renamed to use the ``iosxr_`` prefix, orphaned legacy action plugins are removed, and ``plugin_routing.action`` redirects are added for backward compatibility. The previous 12.3.0 release added a new ``content`` parameter for ``iosxr_config``, deprecated the ``src`` parameter's automatic Jinja2 template processing, fixed BGP ``remote_as`` ASDOT notation handling, and bumped the minimum ``ansible.netcommon`` dependency to ``>=8.5.2``.
+
+Bugfixes
+--------
+
+- action plugins - Remove orphaned legacy action plugins ``bgp.py``, ``interface.py``, and ``logging.py`` that had no corresponding module.
+- action plugins - Rename all 32 resource module action plugins to use the ``iosxr_`` prefix to match their module names and fix ``action-plugin-docs`` sanity failures blocking Automation Hub certification.
+- meta/runtime.yml - Add ``plugin_routing.action`` redirects for all short-name aliases so alias-based invocations continue to resolve the renamed action plugins.
+- plugins/action/iosxr.py - Remove unused ``warnings`` list and unreachable dead code block that never executed due to ``warnings`` always being empty.
+- sanity - Remove 35 stale ``action-plugin-docs`` ignore entries and delete ``ignore-2.15.txt`` as the collection requires ``ansible>=2.16.0``.
+
+v12.3.0
+=======
+
+Minor Changes
+-------------
+
+- Added ``content`` parameter to support pre-rendered template configurations in iosxr_config module which provides a cleaner alternative to the deprecated template auto-processing behavior of the ``src`` parameter.
+- Bump minimum ``ansible.netcommon`` dependency from ``>=8.1.0`` to ``>=8.5.1`` in ``galaxy.yml``.
+- Updated ansible.netcommon dependency minimum required version from >=8.5.1 to >=8.5.2.
+
+Deprecated Features
+-------------------
+
+- The ``src`` parameter's automatic Jinja2 template processing is deprecated and will be removed in March 2028 from iosxr_config module. Use the ``content`` parameter with ``ansible.builtin.template`` lookup instead.
+
+Bugfixes
+--------
+
+- iosxr_bgp_global, iosxr_bgp_templates, iosxr_facts - treat BGP neighbor ``remote_as`` as a string so ASDOT notation (e.g. ``5467.8`` per RFC 5396) is not coerced to float and rejected during facts or resource validation (https://github.com/ansible-collections/cisco.iosxr/issues). This is not a deprecation of ``remote_as`` — existing playbooks passing integer ASPLAIN values (e.g. ``remote_as: 65001``) continue to work because Ansible automatically coerces integers to strings. However, the module now returns ``remote_as`` as a string in parsed/gathered facts, so any playbook assertions comparing ``remote_as`` against an integer literal (e.g. ``result.after.remote_as == 65001``) should be updated to compare against a string (``"65001"``) instead.
+
 v12.2.1
 =======
 

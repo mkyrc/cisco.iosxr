@@ -22,9 +22,12 @@
             cluster_id: 5
             router_id: 192.0.2.10
           neighbors:
+            # remote_as: int (ASPLAIN), str (ASDOT), YAML float (ASDOT) -> facts are strings
             - neighbor: 192.0.2.11
               remote_as: 65537
               cluster_id: 3
+              shutdown:
+                set: false
             - neighbor: 192.0.2.14
               remote_as: 65538
               bfd:
@@ -32,6 +35,24 @@
                   strict_mode: true
                 multiplier: 6
                 minimum_interval: 20
+            - neighbor: 203.0.113.10
+              remote_as: "5467.8"
+            - neighbor: 203.0.113.11
+              remote_as: 65001
+            - neighbor: 203.0.113.12
+              remote_as: 4394.6
+              shutdown:
+                set: true
+          vrfs:
+            - vrf: vrf_asdot
+              # VRF neighbors: str, int, YAML float for remote_as (fact list is sorted by address)
+              neighbors:
+                - neighbor: 198.51.100.100
+                  remote_as: 65540
+                - neighbor: 198.51.100.101
+                  remote_as: 2.5
+                - neighbor: 198.51.100.99
+                  remote_as: "1.0"
       register: result
 
     - name: Assert that before dicts were correctly generated
@@ -57,5 +78,21 @@
         that:
           - result['changed'] == false
           - result.commands|length == 0
+
+    - name: Start a neighbor in shutdown state
+      cisco.iosxr.iosxr_bgp_global:
+        config:
+          as_number: 65536
+          neighbors:
+            - neighbor: 203.0.113.12
+              shutdown:
+                set: false
+      register: result
+
+    - name: Assert that the previous task was successful
+      ansible.builtin.assert:
+        that:
+          - result['changed'] == true
+          - '"no shutdown" in result.commands'
   always:
     - ansible.builtin.include_tasks: _remove_config.yaml

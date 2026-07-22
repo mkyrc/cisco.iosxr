@@ -54,10 +54,22 @@ options:
     - Specifies the source path to the file that contains the configuration or configuration
       template to load. The path to the source file can either be the full path on
       the Ansible control host or a relative path from the playbook or role root directory.  This
-      argument is mutually exclusive with I(lines), I(parents). The configuration lines in the
+      argument is mutually exclusive with I(lines), I(parents), and I(content). The configuration lines in the
       source file should be similar to how it will appear if present in the running-configuration
       of the device to ensure idempotency and correct diff.
+    - "NOTE: The I(src) parameter will no longer process Jinja2 templates starting in January 2028.
+      To use templated configurations, render the template using C(ansible.builtin.template) lookup
+      and pass the result to the I(content) parameter instead."
     type: path
+  content:
+    description:
+    - Configuration content to apply to the device. This should be the rendered configuration
+      text, not a file path.
+    - This is the recommended way to provide templated configurations. Use C(ansible.builtin.template)
+      lookup to render your Jinja2 template and pass the output to this parameter.
+    - This argument is mutually exclusive with I(src), I(lines), and I(parents).
+    - 'Example: C(content: "{{ lookup(''ansible.builtin.template'', ''config.j2'') }}")'
+    type: str
   before:
     description:
     - The ordered set of commands to push on to the command stack if a change needs
@@ -205,6 +217,32 @@ EXAMPLES = """
     replace: config
     backup: 'yes'
 
+- name: Render a Jinja2 template onto an IOS-XR device (DEPRECATED - use content parameter)
+  cisco.iosxr.iosxr_config:
+    backup: true
+    src: iosxr_template.j2
+
+- name: Apply templated configuration using content parameter (RECOMMENDED)
+  cisco.iosxr.iosxr_config:
+    content: "{{ lookup('ansible.builtin.template', 'iosxr_template.j2') }}"
+    backup: true
+
+- name: Apply templated configuration with backup options (RECOMMENDED)
+  cisco.iosxr.iosxr_config:
+    content: "{{ lookup('ansible.builtin.template', 'iosxr_template.j2') }}"
+    backup: true
+    backup_options:
+      filename: backup.cfg
+      dir_path: /home/user
+
+- name: Load configuration from pre-rendered template
+  cisco.iosxr.iosxr_config:
+    content: |
+      interface GigabitEthernet0/0/0/1
+       description Uplink to Core
+       ipv4 address 10.1.1.1 255.255.255.0
+       no shutdown
+
 - name: 'for idempotency, use full-form commands'
   cisco.iosxr.iosxr_config:
     lines:
@@ -261,8 +299,8 @@ import os
 import re
 import tempfile
 
-from ansible.module_utils._text import to_bytes, to_text
 from ansible.module_utils.basic import AnsibleModule
+from ansible.module_utils.common.text.converters import to_bytes, to_text
 from ansible.module_utils.connection import ConnectionError
 from ansible_collections.ansible.netcommon.plugins.module_utils.network.common.config import (
     NetworkConfig,
@@ -274,6 +312,9 @@ from ansible_collections.cisco.iosxr.plugins.module_utils.network.iosxr.iosxr im
     get_config,
     get_connection,
     load_config,
+)
+from ansible_collections.cisco.iosxr.plugins.module_utils.network.iosxr.utils.utils import (
+    warn_and_exit,
 )
 
 
@@ -330,6 +371,8 @@ def get_candidate(module):
     candidate = ""
     if module.params["src"]:
         candidate = module.params["src"]
+    elif module.params["content"]:
+        candidate = module.params["content"]
     elif module.params["lines"]:
         candidate_obj = NetworkConfig(indent=1, comment_tokens=["!"])
         parents = module.params["parents"] or list()
@@ -387,7 +430,7 @@ def run(module, result):
         if not replace_config:
             commands = config_diff.split("\n")
 
-        if any((module.params["lines"], module.params["src"])):
+        if any((module.params["lines"], module.params["src"], module.params["content"])):
             if module.params["before"]:
                 commands[:0] = module.params["before"]
 
@@ -419,6 +462,7 @@ def main():
     backup_spec = dict(filename=dict(), dir_path=dict(type="path"))
     argument_spec = dict(
         src=dict(type="path"),
+        content=dict(type="str"),
         lines=dict(aliases=["commands"], type="list", elements="str"),
         parents=dict(type="list", elements="str"),
         before=dict(type="list", elements="str"),
@@ -438,12 +482,12 @@ def main():
         label=dict(),
     )
 
-    mutually_exclusive = [("lines", "src"), ("parents", "src")]
+    mutually_exclusive = [("lines", "src", "content"), ("parents", "src", "content")]
 
     required_if = [
-        ("match", "strict", ["lines", "src"], True),
-        ("match", "exact", ["lines", "src"], True),
-        ("replace", "block", ["lines", "src"], True),
+        ("match", "strict", ["lines", "src", "content"], True),
+        ("match", "exact", ["lines", "src", "content"], True),
+        ("replace", "block", ["lines", "src", "content"], True),
         ("replace", "config", ["src"]),
     ]
 
@@ -470,23 +514,25 @@ def main():
     if module.params["backup"]:
         result["__backup__"] = get_config(module)
 
-    if any((module.params["src"], module.params["lines"])):
+    if any((module.params["src"], module.params["lines"], module.params["content"])):
         run(module, result)
 
-    if result.get("changed") and any((module.params["src"], module.params["lines"])):
+    if result.get("changed") and any(
+        (module.params["src"], module.params["lines"], module.params["content"]),
+    ):
         msg = (
             "To ensure idempotency and correct diff the input configuration lines should be"
             " similar to how they appear if present in"
             " the running configuration on device"
         )
-        if module.params["src"]:
+        if module.params["src"] or module.params["content"]:
             msg += " including the indentation"
         if "warnings" in result:
             result["warnings"].append(msg)
         else:
             result["warnings"] = msg
 
-    module.exit_json(**result)
+    warn_and_exit(module, result)
 
 
 if __name__ == "__main__":
